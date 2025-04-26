@@ -568,7 +568,11 @@ end
 function StartMission()
     MissionName, MissionCode = SearchForMission(GetCurrentMissions())
     if MissionName ~= nil and MissionCode ~= nil then
-        LogInfo("Running mission [" .. MissionName .. "] with Mission ID [" .. MissionCode.. "]")
+        if Debug then
+            LogDebug("Running mission [" .. MissionName .. "] with Mission ID [" .. MissionCode.. "]")
+        else
+            LogInfo("Running mission " .. MissionName)
+        end
         yield(string.format(Callback.clickMission, MissionCode))
         yield(string.format(Callback.startMission, MissionCode))
         DoingMission = true

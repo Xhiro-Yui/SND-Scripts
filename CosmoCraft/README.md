@@ -11,7 +11,3 @@ I am lazy to write this most of the time, expect skips or permanent version numb
 
 #### v1.0
 - Initial version  
-
-#### v1.0
-- Initial version
-

@@ -1,5 +1,10 @@
 --[[
 **************************************************************************
+*                          CosmoCraft v1.1                               *
+**************************************************************************
+]]
+--[[
+**************************************************************************
 *                                Settings                                *
 **************************************************************************
 ]]
@@ -8,10 +13,11 @@ CriticalMissions = false    -- Change this manually to true during red alerts to
 ProvisionalMissions = false -- Change this manually to true to attempt doing provisional missions when available
 Debug = false               -- Change this to true to print debug log to see what the script is doing
 CurrentClass = "CRP"       -- SND is broken and can't retrieve self job ID right now so have to manual input
+Artisan = true             -- Uses Artisan's endurance mode
 --[[
-********************************************************************************
-*                           Internal Variables                                  *
-********************************************************************************
+**************************************************************************
+*                           Internal Variables                           *
+**************************************************************************
 ]]
 CharacterCondition = {
     crafting = 5,
@@ -413,9 +419,9 @@ MissionList = {
     }
 }
 --[[
-********************************************************************************
-*                            Internal Functions                                *
-********************************************************************************
+**************************************************************************
+*                           Internal Functions                           *
+**************************************************************************
 ]]
 function LogDebug(val)
     if Debug then
@@ -425,6 +431,18 @@ end
 
 function LogInfo(val)
     yield("/echo [Info] " .. val)
+end
+
+function CheckRequiredDependencies()
+    LogInfo("Checking required dependencies for the script to run")
+    if Artisan then
+        if not HasPlugin("Artisan") then
+            LogInfo("Artisan is required. Please install Artisan")
+            return false
+        end
+    end
+    LogInfo("Dependencies check is completed")
+    return true
 end
 
 function PrintCurrentMissions(CurrentMissions)
@@ -640,28 +658,25 @@ function SearchForMission(CurrentMissionList)
             return CurrentMissionName, MissionCode
         end
     end
-    LogInfo("No suitable A mission found. Searching for B mission.")
     for _, CurrentMissionName in pairs(CurrentMissionList.ClassB) do
         MissionCode = CheckMissionValidity(CurrentMissionName)
         if MissionCode ~= nil then
             return CurrentMissionName, MissionCode
         end
     end
-    LogInfo("No suitable B mission found. Searching for C mission.")
     for _, CurrentMissionName in pairs(CurrentMissionList.ClassC) do
         MissionCode = CheckMissionValidity(CurrentMissionName)
         if MissionCode ~= nil then
             return CurrentMissionName, MissionCode
         end
     end
-    LogInfo("No suitable C mission found. Searching for D mission.")
     for _, CurrentMissionName in pairs(CurrentMissionList.ClassD) do
         MissionCode = CheckMissionValidity(CurrentMissionName)
         if MissionCode ~= nil then
             return CurrentMissionName, MissionCode
         end
     end
-    LogInfo("No suitable mission found. Aborting script.")
+    LogInfo("No valid mission found. Aborting script.")
     StopScript = true
 
 end
@@ -689,8 +704,11 @@ function CraftNextItem()
         yield(string.format(Callback.clickNextItemToCraft, ItemSequence))
         if tonumber(GetNodeText("WKSRecipeNotebook", 24)) > 0 then
             LogInfo("Starting synthesis")
-            yield(Callback.clickHQButton)
-            yield(Callback.startSynthesis)
+            if Artisan then ArtisanSetEnduranceStatus(true)
+            else
+                yield(Callback.clickHQButton)
+                yield(Callback.startSynthesis)
+            end
             Synthesizing = GetCharacterCondition(CharacterCondition.crafting) and not GetCharacterCondition(CharacterCondition.preparingToCraft)
         else
             LogDebug("Item " .. ((ItemSequence) + 1) .. " can no longer be crafted. Checking next item")
@@ -761,12 +779,16 @@ function CheckIfCanRepair()
 end
 
 --[[
-********************************************************************************
-*                            Script Body                                       *
-********************************************************************************
+**************************************************************************
+*                              Script Body                               *
+**************************************************************************
 ]]
 
-LogInfo("Starting CosmoCraft v1.0")
+LogInfo("Starting CosmoCraft")
+if not CheckRequiredDependencies() then
+    LogInfo("Missing dependency required by the script. Aborting script")
+    StopScript = true
+end
 while not StopScript do
     ExtractMateria()
     Repair()

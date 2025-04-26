@@ -9,5 +9,9 @@
 ## Version History 
 I am lazy to write this most of the time, expect skips or permanent version numbers despite updates.
 
+#### v1.1
+- Uses Artisan's Endurance mode if the option is selected (check Settings)
+
 #### v1.0
 - Initial version  
+

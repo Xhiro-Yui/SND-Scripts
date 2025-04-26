@@ -148,16 +148,16 @@ MissionList = {
         Time = {},
         Weather = {},
         A = {
-            [22] = { missionName = "A-1: High-durability Fiberboard", valid = false },
-            [23] = { missionName = "A-1: High-grade Paper", valid = false },
-            [24] = { missionName = "A-1: Starship Insulation", valid = false },
-            [25] = { missionName = "A-1: High Burn Charcoal", valid = false },
-            [26] = { missionName = "A-1: Lunar Flora Test Processing", valid = false },
-            [33] = { missionName = "A-1: Power Transmission Shafts I", valid = false },
-            [35] = { missionName = "A-1: Specialized Materials I", valid = false },
-            [27] = { missionName = "A-2: Test Material Final Processing", valid = false },
-            [28] = { missionName = "A-2: Serving Trays", valid = false },
-            [38] = { missionName = "A-2: Rest Facility Materials", valid = false },
+            [22] = { missionName = "A-1: High-durability Fiberboard", valid = true },
+            [23] = { missionName = "A-1: High-grade Paper", valid = true },
+            [24] = { missionName = "A-1: Starship Insulation", valid = true },
+            [25] = { missionName = "A-1: High Burn Charcoal", valid = true },
+            [26] = { missionName = "A-1: Lunar Flora Test Processing", valid = true },
+            [33] = { missionName = "A-1: Power Transmission Shafts I", valid = true },
+            [35] = { missionName = "A-1: Specialized Materials I", valid = true },
+            [27] = { missionName = "A-2: Test Material Final Processing", valid = true },
+            [28] = { missionName = "A-2: Serving Trays", valid = true },
+            [38] = { missionName = "A-2: Rest Facility Materials", valid = true },
             [496] = { missionName = "A-2: Aquatic Resource Research Tanks", valid = false }
         },
         B = {
@@ -708,7 +708,9 @@ function CraftNextItem()
         yield(string.format(Callback.clickNextItemToCraft, ItemSequence))
         if tonumber(GetNodeText("WKSRecipeNotebook", 24)) > 0 then
             LogInfo("Starting synthesis")
-            if Artisan then ArtisanSetEnduranceStatus(true)
+            if Artisan then 
+                ArtisanSetEnduranceStatus(true)
+                yield("/wait 1")
             else
                 yield(Callback.clickHQButton)
                 yield(Callback.startSynthesis)

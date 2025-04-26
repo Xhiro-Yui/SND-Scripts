@@ -12,7 +12,7 @@ RepairAmount = 99          -- the amount it needs to drop before Repairing (set 
 CriticalMissions = false    -- Change this manually to true during red alerts to do red alert missions
 ProvisionalMissions = false -- Change this manually to true to attempt doing provisional missions when available
 Debug = false               -- Change this to true to print debug log to see what the script is doing
-CurrentClass = "CRP"       -- SND is broken and can't retrieve self job ID right now so have to manual input
+CurrentClass = "ARM"       -- SND is broken and can't retrieve self job ID right now so have to manual input
 Artisan = true             -- Uses Artisan's endurance mode
 --[[
 **************************************************************************
@@ -56,14 +56,14 @@ MissionList = {
         Time = {},
         Weather = {},
         A = {
-            [112] = { missionName = "A-1: Key Facility Plating", valid = false },
+            [112] = { missionName = "A-1: Key Facility Plating", valid = true },
             [113] = { missionName = "A-1: Rare Material Processing", valid = true },
             [114] = { missionName = "A-1: Construction Necessities", valid = true },
             [115] = { missionName = "A-1: High-conductivity Culinary Tools", valid = true },
-            [116] = { missionName = "A-1: Meteoric Material Test Processing", valid = false },
+            [116] = { missionName = "A-1: Meteoric Material Test Processing", valid = true },
             [123] = { missionName = "A-1: Hub Furnishings and Fixtures I", valid = true },
             [125] = { missionName = "A-1: Specialized Materials I", valid = true },
-            [117] = { missionName = "A-2: Replica Incensories", valid = true },
+            [117] = { missionName = "A-2: Replica Incensories", valid = false },
             [118] = { missionName = "A-2: Fine-grade Material Processing", valid = false },
             [128] = { missionName = "A-2: Starship Building Materials", valid = false },
             [497] = { missionName = "A-2: Impact-resistant Containers", valid = false }
@@ -143,7 +143,9 @@ MissionList = {
         }
     },
     CRP = {
-        Critical = {},
+        Critical = {
+            [514] = { missionName = " Fungal Building Materials", valid = true },
+        },
         Sequential = {},
         Time = {},
         Weather = {},
@@ -482,6 +484,14 @@ function GetCurrentMissions()
         LogDebug("Critical Missions enabled. Parsing Critical missions tab")
         yield(Callback.navigateToCriticalMissionsTab)
         Critical = {}
+        if GetNodeText("WKSMission", 89, 24, 2) == "Critical Missions" then
+            ParseNonBasicMission("Critical", Critical, GetNodeText("WKSMission", 89, 2, 8))
+            ParseNonBasicMission("Critical", Critical, GetNodeText("WKSMission", 89, 3, 8))
+            ParseNonBasicMission("Critical", Critical, GetNodeText("WKSMission", 89, 4, 8))
+            ParseNonBasicMission("Critical", Critical, GetNodeText("WKSMission", 89, 5, 8))
+            ParseNonBasicMission("Critical", Critical, GetNodeText("WKSMission", 89, 6, 8))
+            ParseNonBasicMission("Critical", Critical, GetNodeText("WKSMission", 89, 7, 8))
+        end
         Missions.Critical = Critical
         if (next(Critical) ~= nil) then
             if Debug then PrintCurrentMissions(Missions) end
@@ -692,6 +702,8 @@ function SubmitMission()
     yield(Callback.submitMission)
     if IsAddonVisible("WKSReward") then
         LogInfo("Mission submitted!")
+        -- Manually sets the endurance status to false in case Artisan doesn't do it or there are desyncs
+        ArtisanSetEnduranceStatus(false)
         DoingMission = false
     end
 end

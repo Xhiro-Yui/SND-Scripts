@@ -5,7 +5,7 @@
 ]]
 RepairAmount = 99          -- the amount it needs to drop before Repairing (set it to 0 if you don't want it to repair)
 CriticalMissions = false    -- Change this manually to true during red alerts to do red alert missions
-ProvisionalMissions = true -- Change this manually to true to attempt doing provisional missions when available
+ProvisionalMissions = false -- Change this manually to true to attempt doing provisional missions when available
 Debug = false               -- Change this to true to print debug log to see what the script is doing
 CurrentClass = "CRP"       -- SND is broken and can't retrieve self job ID right now so have to manual input
 --[[
@@ -28,6 +28,8 @@ Callback = {
     openMissionInformationWindow = "/callback WKSHud true 11 <wait.1>",
     openRecipeWindow = "/callback WKSMissionInfomation true 14 <wait.1>",
     startSynthesis = "/callback WKSRecipeNotebook true 6 <wait.1>",
+    clickHQButton = "/callback WKSRecipeNotebook true 5 <wait.0.2>",
+    clickNextItemToCraft = "/callback WKSRecipeNotebook true 0 %su <wait.1>",
     navigateToBasicMissionsTab = "/callback WKSMission true 15 0u <wait.1>",
     navigateToProvisionalMissionsTab = "/callback WKSMission true 15 1u <wait.1>",
     navigateToCriticalMissionsTab = "/callback WKSMission true 15 2u <wait.1>",
@@ -675,6 +677,28 @@ function SubmitMission()
     end
 end
 
+function CraftNextItem()
+    -- Since couldn't submit, means something is still craftable
+    -- !!!! POTENTIAL CRASH !!!!
+    if not IsAddonVisible("WKSRecipeNotebook") then
+        -- Opens Recipe Book. Mission information window should already be opened.
+        yield(Callback.openRecipeWindow)
+    end
+    local ItemSequence = 0
+    while not Synthesizing do
+        yield(string.format(Callback.clickNextItemToCraft, ItemSequence))
+        if tonumber(GetNodeText("WKSRecipeNotebook", 24)) > 0 then
+            LogInfo("Starting synthesis")
+            yield(Callback.clickHQButton)
+            yield(Callback.startSynthesis)
+            Synthesizing = GetCharacterCondition(CharacterCondition.crafting) and not GetCharacterCondition(CharacterCondition.preparingToCraft)
+        else
+            LogDebug("Item " .. ((ItemSequence) + 1) .. " can no longer be crafted. Checking next item")
+            ItemSequence = ItemSequence + 1
+        end
+    end
+end
+
 function Repair()
     CanRepair = CheckIfCanRepair()
     LogDebug("CanRepair : " .. tostring(CanRepair))
@@ -762,18 +786,11 @@ while not StopScript do
         end
     end
     while DoingMission do
-        -- Update if character is synthesizing
-        Synthesizing =
-            GetCharacterCondition(CharacterCondition.crafting) and
-            not GetCharacterCondition(CharacterCondition.preparingToCraft)
-
         LogDebug("DoingMission : " .. tostring(DoingMission))
-        LogDebug("Character is synthesizing : " .. tostring(Synthesizing))
-
-        -- Mid synthesizing, wait awhile before rechecking
         if Synthesizing then
-            LogInfo("Waiting for synthesis to finish <wait.3>")
+            yield("/wait 3")
         end
+        Synthesizing = GetCharacterCondition(CharacterCondition.crafting) and not GetCharacterCondition(CharacterCondition.preparingToCraft)
         -- If not mid synthesizing, tries to submit
         if not Synthesizing then
             SubmitMission()
@@ -781,13 +798,7 @@ while not StopScript do
             if not DoingMission then
                 break
             end
-            -- Mission failed to submit, continue crafting
-            if not IsAddonVisible("WKSRecipeNotebook") then
-                -- Opens Recipe Book. Mission information window should already be opened.
-                yield(Callback.openRecipeWindow)
-            end
-            LogInfo("Starting synthesis")
-            yield(Callback.startSynthesis)
+            CraftNextItem()
         end
     end
 end

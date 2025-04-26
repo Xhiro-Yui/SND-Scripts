@@ -5,10 +5,9 @@
 ]]
 RepairAmount = 99          -- the amount it needs to drop before Repairing (set it to 0 if you don't want it to repair)
 CriticalMissions = false    -- Change this manually to true during red alerts to do red alert missions
-ProvisionalMissions = false -- Change this manually to true to attempt doing provisional missions when available
-Debug = true               -- Change this to true to print debug log to see what the script is doing
+ProvisionalMissions = true -- Change this manually to true to attempt doing provisional missions when available
+Debug = false               -- Change this to true to print debug log to see what the script is doing
 CurrentClass = "CRP"       -- SND is broken and can't retrieve self job ID right now so have to manual input
-FallbackMission = true     -- Change this to true to select a lower difficulty quest if no valid A uests are available
 --[[
 ********************************************************************************
 *                           Internal Variables                                  *
@@ -428,20 +427,39 @@ end
 
 function PrintCurrentMissions(CurrentMissions)
     for MissionType, MissionList in pairs(CurrentMissions) do
-        LogDebug("[CurrentMissions] " .. MissionType)
+        LogDebug("[CurrentMissions] Mission Type : " .. MissionType)
         for _, MissionName in pairs(MissionList) do
-            LogDebug("[CurrentMissions] " .. MissionName)
+            LogDebug("[CurrentMissions] -> " .. MissionName)
         end
         LogDebug("[CurrentMissions] ------")
     end
 end
 
+function GetMissionClass(MissionType, MissionName)
+    LogDebug("Searching for [" .. MissionName .. "] in ".. MissionType .. " Mission List for " .. CurrentClass)
+    for _, MissionObject in pairs(MissionList[CurrentClass][MissionType]) do
+        if MissionObject.missionName == MissionName then
+            return true
+        end
+    end
+    -- Mission not found in mission list. This can be due to unknown missions that has not been documented or there is an error on the mission list
+    LogDebug("Unable to find [" .. MissionName .. "] in Mission List. Skipping")
+    return false
+end
+
+function ParseNonBasicMission(MissionType, MissionTable, MissionName)
+    if MissionName ~= nil then
+        if GetMissionClass(MissionType, MissionName) then
+            table.insert(MissionTable, MissionName)
+        end
+    end
+end
+
 function GetCurrentMissions()
-    LogInfo("Getting current mission list")
     Missions = {}
     if CriticalMissions then
         -- TODO Parse the class icon as critical missions lists all missions including other job missions
-        LogInfo("Critical Missions enabled. Parsing Critical missions tab")
+        LogDebug("Critical Missions enabled. Parsing Critical missions tab")
         yield(Callback.navigateToCriticalMissionsTab)
         Critical = {}
         Missions.Critical = Critical
@@ -451,15 +469,16 @@ function GetCurrentMissions()
         end
     end
     if ProvisionalMissions then
-        LogInfo("Provisional Missions enabled. Parsing Provisional missions tab")
+        LogDebug("Provisional Missions enabled. Parsing Provisional missions tab")
         yield(Callback.navigateToProvisionalMissionsTab)
         Sequential = {}
         Time = {}
         Weather = {}
         if GetNodeText("WKSMission", 89, 24, 2) == "Time-restricted Missions" then
-            if GetNodeText(GetNodeText("WKSMission", 89, 2, 8)) ~= nil then
-                table.insert(Time, GetNodeText(GetNodeText("WKSMission", 89, 2, 8)))
-            end
+            ParseNonBasicMission("Time", Time, GetNodeText("WKSMission", 89, 2, 8))
+        end
+        if GetNodeText("WKSMission", 89, 24, 2) == "Weather-restricted Missions" then
+            ParseNonBasicMission("Weather", Weather, GetNodeText("WKSMission", 89, 2, 8))
         end
 
         Missions.Sequential = Sequential
@@ -470,7 +489,7 @@ function GetCurrentMissions()
             return Missions -- Return early because if any is available, should be doing it anyway
         end
     end
-    LogInfo("Parsing Basic missions tab")
+    LogDebug("Parsing Basic missions tab")
     yield(Callback.navigateToBasicMissionsTab)
     ClassA = {}
     ClassB = {}
@@ -537,7 +556,7 @@ function StartMission()
 end
 
 function CheckMissionValidity(MissionName)
-    LogDebug("Checking if " .. MissionName .. " is set as valid mission")
+    LogDebug("Checking if [" .. MissionName .. "] is set as valid mission")
     if CriticalMissions then
         for MissionCode, MissionObject in pairs(MissionList[CurrentClass]["Critical"]) do
             if MissionObject.missionName == MissionName and MissionObject.valid then
@@ -663,6 +682,7 @@ function Repair()
         if not IsAddonVisible("Repair") then
             yield(Callback.toggleRepairWindow)
         end
+        LogInfo("Repairing ...")
         yield(Callback.repair)
         CanRepair = CheckIfCanRepair()
     end
@@ -682,6 +702,7 @@ function ExtractMateria()
         if IsAddonVisible("MaterializeDialog") then
             yield(Callback.extractMateriaDialog)
         else
+            LogInfo("Extracting materia ...")
             yield(Callback.extractMateria)
         end
         CanMaterialize = CheckIfCanExtractMateria()
@@ -697,13 +718,21 @@ function CheckIfCanExtractMateria()
         LogInfo("Materia extraction available")
         return true
     end
-    LogInfo("Materia extraction not available")
     return false
 end
 
 function CheckIfCanRepair()
     if GetItemCount(33916) > 0 and NeedsRepair(RepairAmount) then
+        LogInfo("Repair available")
         return true
+    end
+    if GetItemCount(33916) < 1 then
+        LogInfo("Insufficient Dark Matter to repair. Aborting script")
+        StopScript = true
+        return false
+    end
+    if not NeedsRepair(RepairAmount) then
+        return false
     end
 end
 
@@ -717,6 +746,7 @@ LogInfo("Starting CosmoCraft v1.0")
 while not StopScript do
     ExtractMateria()
     Repair()
+    if StopScript then return end -- Premature ending script, mainly caused by being unable to repair gear
     LogDebug("DoingMission : " .. tostring(DoingMission))
     while not DoingMission do
         if not IsAddonVisible("WKSMission") then

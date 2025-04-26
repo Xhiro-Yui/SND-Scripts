@@ -3,11 +3,11 @@
 *                                Settings                                *
 **************************************************************************
 ]]
-RepairAmount = 20          -- the amount it needs to drop before Repairing (set it to 0 if you don't want it to repair)
+RepairAmount = 99          -- the amount it needs to drop before Repairing (set it to 0 if you don't want it to repair)
 CriticalMissions = false    -- Change this manually to true during red alerts to do red alert missions
 ProvisionalMissions = false -- Change this manually to true to attempt doing provisional missions when available
 Debug = true               -- Change this to true to print debug log to see what the script is doing
-CurrentClass = "ALC"       -- SND is broken and can't retrieve self job ID right now so have to manual input
+CurrentClass = "CRP"       -- SND is broken and can't retrieve self job ID right now so have to manual input
 FallbackMission = true     -- Change this to true to select a lower difficulty quest if no valid A uests are available
 --[[
 ********************************************************************************
@@ -22,6 +22,9 @@ CharacterCondition = {
 Callback = {
     extractMateria = "/callback Materialize true 2 0 <wait.3>",
     extractMateriaDialog = "/callback MaterializeDialog true 0 <wait.3>",
+    repair = "/callback Repair true 0 <wait.3>",
+    selectYes = "/callback SelectYesno true 0 <wait.3>",
+    toggleRepairWindow = "/generalaction repair <wait.1>",
     toggleMateriaExtractionWindow = '/generalaction "Materia Extraction" <wait.1>',
     openMissionInformationWindow = "/callback WKSHud true 11 <wait.1>",
     openRecipeWindow = "/callback WKSMissionInfomation true 14 <wait.1>",
@@ -31,7 +34,7 @@ Callback = {
     navigateToCriticalMissionsTab = "/callback WKSMission true 15 2u <wait.1>",
     clickMission = "/callback WKSMission true 12 %su 8u 1u <wait.1>",
     startMission = "/callback WKSMission true 13 %su 8u 1u <wait.1>",
-    submitMission = "/callback WKSMissionInfomation true 11 <wait.1>"
+    submitMission = "/callback WKSMissionInfomation true 11 <wait.1>",
 }
 StopScript = false
 DoingMission = false
@@ -46,25 +49,14 @@ MissionList = {
         Time = {},
         Weather = {},
         A = {
-            -- [112] = { missionName = "A-1: Key Facility Plating", valid = false },
-            -- [113] = { missionName = "A-1: Rare Material Processing", valid = true },
-            -- [114] = { missionName = "A-1: Construction Necessities", valid = true },
-            -- [115] = { missionName = "A-1: High-conductivity Culinary Tools", valid = true },
-            -- [116] = { missionName = "A-1: Meteoric Material Test Processing", valid = false },
-            -- [123] = { missionName = "A-1: Hub Furnishings and Fixtures I", valid = true },
-            -- [125] = { missionName = "A-1: Specialized Materials I", valid = true },
-            -- [117] = { missionName = "A-2: Replica Incensories", valid = true },
-            -- [118] = { missionName = "A-2: Fine-grade Material Processing", valid = false },
-            -- [128] = { missionName = "A-2: Starship Building Materials", valid = false },
-            -- [497] = { missionName = "A-2: Impact-resistant Containers", valid = false }
             [112] = { missionName = "A-1: Key Facility Plating", valid = false },
-            [113] = { missionName = "A-1: Rare Material Processing", valid = false },
-            [114] = { missionName = "A-1: Construction Necessities", valid = false },
-            [115] = { missionName = "A-1: High-conductivity Culinary Tools", valid = false },
+            [113] = { missionName = "A-1: Rare Material Processing", valid = true },
+            [114] = { missionName = "A-1: Construction Necessities", valid = true },
+            [115] = { missionName = "A-1: High-conductivity Culinary Tools", valid = true },
             [116] = { missionName = "A-1: Meteoric Material Test Processing", valid = false },
-            [123] = { missionName = "A-1: Hub Furnishings and Fixtures I", valid = false },
-            [125] = { missionName = "A-1: Specialized Materials I", valid = false },
-            [117] = { missionName = "A-2: Replica Incensories", valid = false },
+            [123] = { missionName = "A-1: Hub Furnishings and Fixtures I", valid = true },
+            [125] = { missionName = "A-1: Specialized Materials I", valid = true },
+            [117] = { missionName = "A-2: Replica Incensories", valid = true },
             [118] = { missionName = "A-2: Fine-grade Material Processing", valid = false },
             [128] = { missionName = "A-2: Starship Building Materials", valid = false },
             [497] = { missionName = "A-2: Impact-resistant Containers", valid = false }
@@ -445,8 +437,11 @@ function PrintCurrentMissions(CurrentMissions)
 end
 
 function GetCurrentMissions()
+    LogInfo("Getting current mission list")
     Missions = {}
     if CriticalMissions then
+        -- TODO Parse the class icon as critical missions lists all missions including other job missions
+        LogInfo("Critical Missions enabled. Parsing Critical missions tab")
         yield(Callback.navigateToCriticalMissionsTab)
         Critical = {}
         Missions.Critical = Critical
@@ -456,6 +451,7 @@ function GetCurrentMissions()
         end
     end
     if ProvisionalMissions then
+        LogInfo("Provisional Missions enabled. Parsing Provisional missions tab")
         yield(Callback.navigateToProvisionalMissionsTab)
         Sequential = {}
         Time = {}
@@ -474,32 +470,58 @@ function GetCurrentMissions()
             return Missions -- Return early because if any is available, should be doing it anyway
         end
     end
+    LogInfo("Parsing Basic missions tab")
     yield(Callback.navigateToBasicMissionsTab)
     ClassA = {}
-    table.insert(ClassA, GetNodeText("WKSMission", 89, 2, 8))
-    table.insert(ClassA, GetNodeText("WKSMission", 89, 3, 8))
-    table.insert(ClassA, GetNodeText("WKSMission", 89, 4, 8))
-    table.insert(ClassA, GetNodeText("WKSMission", 89, 5, 8))
-    Missions.ClassA = ClassA
-    if FallbackMission then
-        ClassB = {}
+    ClassB = {}
+    ClassC = {}
+    ClassD = {}
+    if (GetNodeText("WKSMission", 89, 24, 2) == "Class A Missions") then
+        table.insert(ClassA, GetNodeText("WKSMission", 89, 2, 8))
+        table.insert(ClassA, GetNodeText("WKSMission", 89, 3, 8))
+        table.insert(ClassA, GetNodeText("WKSMission", 89, 4, 8))
+        table.insert(ClassA, GetNodeText("WKSMission", 89, 5, 8))
         table.insert(ClassB, GetNodeText("WKSMission", 89, 6, 8))
         table.insert(ClassB, GetNodeText("WKSMission", 89, 7, 8))
         table.insert(ClassB, GetNodeText("WKSMission", 89, 8, 8))
-        Missions.ClassB = ClassB
-
-        ClassC = {}
         table.insert(ClassC, GetNodeText("WKSMission", 89, 9, 8))
         table.insert(ClassC, GetNodeText("WKSMission", 89, 10, 8))
         table.insert(ClassC, GetNodeText("WKSMission", 89, 11, 8))
-        Missions.ClassC = ClassC
-
-        ClassD = {}
         table.insert(ClassD, GetNodeText("WKSMission", 89, 12, 8))
         table.insert(ClassD, GetNodeText("WKSMission", 89, 13, 8))
         table.insert(ClassD, GetNodeText("WKSMission", 89, 14, 8))
-        Missions.ClassD = ClassD
+    else
+        if (GetNodeText("WKSMission", 89, 24, 2) == "Class B Missions") then
+            table.insert(ClassB, GetNodeText("WKSMission", 89, 2, 8))
+            table.insert(ClassB, GetNodeText("WKSMission", 89, 3, 8))
+            table.insert(ClassB, GetNodeText("WKSMission", 89, 4, 8))
+            table.insert(ClassC, GetNodeText("WKSMission", 89, 5, 8))
+            table.insert(ClassC, GetNodeText("WKSMission", 89, 6, 8))
+            table.insert(ClassC, GetNodeText("WKSMission", 89, 7, 8))
+            table.insert(ClassD, GetNodeText("WKSMission", 89, 8, 8))
+            table.insert(ClassD, GetNodeText("WKSMission", 89, 9, 8))
+            table.insert(ClassD, GetNodeText("WKSMission", 89, 10, 8))
+        else
+            if (GetNodeText("WKSMission", 89, 24, 2) == "Class C Missions") then
+                table.insert(ClassC, GetNodeText("WKSMission", 89, 2, 8))
+                table.insert(ClassC, GetNodeText("WKSMission", 89, 3, 8))
+                table.insert(ClassC, GetNodeText("WKSMission", 89, 4, 8))
+                table.insert(ClassD, GetNodeText("WKSMission", 89, 5, 8))
+                table.insert(ClassD, GetNodeText("WKSMission", 89, 6, 8))
+                table.insert(ClassD, GetNodeText("WKSMission", 89, 7, 8))
+            else
+                if (GetNodeText("WKSMission", 89, 24, 2) == "Class D Missions") then
+                    table.insert(ClassD, GetNodeText("WKSMission", 89, 2, 8))
+                    table.insert(ClassD, GetNodeText("WKSMission", 89, 3, 8))
+                    table.insert(ClassD, GetNodeText("WKSMission", 89, 4, 8))
+                end
+            end
+        end
     end
+    Missions.ClassA = ClassA
+    Missions.ClassB = ClassB
+    Missions.ClassC = ClassC
+    Missions.ClassD = ClassD
     if Debug then PrintCurrentMissions(Missions) end
     return Missions
 end
@@ -515,7 +537,7 @@ function StartMission()
 end
 
 function CheckMissionValidity(MissionName)
-    LogInfo("Checking if " .. MissionName .. " is set as valid mission")
+    LogDebug("Checking if " .. MissionName .. " is set as valid mission")
     if CriticalMissions then
         for MissionCode, MissionObject in pairs(MissionList[CurrentClass]["Critical"]) do
             if MissionObject.missionName == MissionName and MissionObject.valid then
@@ -635,41 +657,22 @@ function SubmitMission()
 end
 
 function Repair()
-    -- if IsAddonVisible("SelectYesno") then
-    --     yield("/callback SelectYesno true 0")
-    --     return
-    -- end
-    -- if IsAddonVisible("Repair") then
-    --     if not NeedsRepair(RepairAmount) then
-    --         yield("/callback Repair true -1") -- if you don't need repair anymore, close the menu
-    --     else
-    --         yield("/callback Repair true 0") -- select repair
-    --     end
-    --     return
-    -- end
-    -- -- if occupied by repair, then just wait
-    -- if GetCharacterCondition(CharacterCondition.occupiedMateriaExtractionAndRepair) then
-    --     yield("/wait 1")
-    --     return
-    -- end
-    -- if GetItemCount(33916) > 0 then
-    --     if IsAddonVisible("Shop") then
-    --         yield("/callback Shop true -1")
-    --         return
-    --     end
-    --     if NeedsRepair(RepairAmount) then
-    --         if not IsAddonVisible("Repair") then
-    --             yield("/generalaction repair")
-    --         end
-    --     end
-    -- else
-    --     yield("/echo Out of Dark Matter. Turning Off")
-    --     StopScript = true
-    -- end
+    CanRepair = CheckIfCanRepair()
+    LogDebug("CanRepair : " .. tostring(CanRepair))
+    while CanRepair do
+        if not IsAddonVisible("Repair") then
+            yield(Callback.toggleRepairWindow)
+        end
+        yield(Callback.repair)
+        CanRepair = CheckIfCanRepair()
+    end
+    -- Nothing else to repair. Close the repair window
+    if IsAddonVisible("Repair") then
+        yield(Callback.toggleRepairWindow)
+    end
 end
 
 function ExtractMateria()
-    LogInfo("Extracting materia")
     CanMaterialize = CheckIfCanExtractMateria()
     LogDebug("CanMaterialize : " .. tostring(CanMaterialize))
     while CanMaterialize do
@@ -698,16 +701,22 @@ function CheckIfCanExtractMateria()
     return false
 end
 
+function CheckIfCanRepair()
+    if GetItemCount(33916) > 0 and NeedsRepair(RepairAmount) then
+        return true
+    end
+end
+
 --[[
 ********************************************************************************
 *                            Script Body                                       *
 ********************************************************************************
 ]]
 
-LogInfo("Starting CosmicCraft")
+LogInfo("Starting CosmoCraft v1.0")
 while not StopScript do
     ExtractMateria()
-    -- repair()
+    Repair()
     LogDebug("DoingMission : " .. tostring(DoingMission))
     while not DoingMission do
         if not IsAddonVisible("WKSMission") then
@@ -716,8 +725,6 @@ while not StopScript do
         if IsAddonVisible("WKSMission") then
             -- Mission not started
             LogInfo("Searching for a valid mission to start")
-            -- Clicking the Basic Missions tab to skip Red Alerts
-            -- yield(Callback.navigateToBasicMissionTab)
             StartMission()
         end
         if StopScript then

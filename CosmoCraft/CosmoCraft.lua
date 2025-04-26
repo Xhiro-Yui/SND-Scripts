@@ -703,12 +703,15 @@ function CraftNextItem()
         -- Opens Recipe Book. Mission information window should already be opened.
         yield(Callback.openRecipeWindow)
     end
+    yield("/wait 1")
+    Synthesizing = GetCharacterCondition(CharacterCondition.crafting) and not GetCharacterCondition(CharacterCondition.preparingToCraft)
+    -- Does a final waut and update on current character status to mitigate issues due to server desync/lag
     local ItemSequence = 0
     while not Synthesizing do
         yield(string.format(Callback.clickNextItemToCraft, ItemSequence))
         if tonumber(GetNodeText("WKSRecipeNotebook", 24)) > 0 then
-            LogInfo("Starting synthesis")
-            if Artisan then 
+            LogInfo("Starting synthesis on item number " .. (ItemSequence + 1))
+            if Artisan then
                 ArtisanSetEnduranceStatus(true)
                 yield("/wait 1")
             else
@@ -814,11 +817,8 @@ while not StopScript do
         end
     end
     while DoingMission do
-        LogDebug("DoingMission : " .. tostring(DoingMission))
-        if Synthesizing then
-            yield("/wait 3")
-        end
         Synthesizing = GetCharacterCondition(CharacterCondition.crafting) and not GetCharacterCondition(CharacterCondition.preparingToCraft)
+        LogDebug("Synthesizing : " .. tostring(Synthesizing))
         -- If not mid synthesizing, tries to submit
         if not Synthesizing then
             SubmitMission()
@@ -827,6 +827,9 @@ while not StopScript do
                 break
             end
             CraftNextItem()
+        end
+        if Synthesizing then
+            yield("/wait 3")
         end
     end
 end

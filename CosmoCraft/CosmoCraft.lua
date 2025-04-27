@@ -1,6 +1,6 @@
 --[[
 **************************************************************************
-*                          CosmoCraft v1.1                               *
+*                          CosmoCraft v1.2                               *
 **************************************************************************
 ]]
 --[[
@@ -9,9 +9,9 @@
 **************************************************************************
 ]]
 RepairAmount = 99          -- the amount it needs to drop before Repairing (set it to 0 if you don't want it to repair)
-CriticalMissions = true    -- Change this manually to true during red alerts to do red alert missions
+CriticalMissions = false    -- Change this manually to true during red alerts to do red alert missions -- WILL CRASH IF TRUE! Will be fixed in v1.3 or later
 ProvisionalMissions = false -- Change this manually to true to attempt doing provisional missions when available
-Debug = true               -- Change this to true to print debug log to see what the script is doing
+Debug = false               -- Change this to true to print debug log to see what the script is doing
 CurrentClass = "ARM"       -- SND is broken and can't retrieve self job ID right now so have to manual input
 Artisan = true             -- Uses Artisan's endurance mode
 InteractKeybind = "NUMPAD0"
@@ -698,12 +698,15 @@ function SearchForMission(CurrentMissionList)
 end
 
 function SubmitMission()
+    LogDebug("Attempting to submit mission")
     if CriticalMissions then
         if GetNodeText("_ToDoList", 28, 3) == "Deliver to the collection point: 0/1" then
+            LogDebug("Critical mission submission") -- TODO vnav to the submission npc
             yield(string.format(Callback.interactNpc, InteractKeybind))
             yield(string.format(Callback.interactNpc, InteractKeybind))
         end
     else
+        LogDebug("Normal mission submission")
         if not IsAddonVisible("WKSMissionInfomation") then
             yield(Callback.openMissionInformationWindow)
         end
@@ -716,11 +719,13 @@ function SubmitMission()
 end
 
 function GetNextCraftableItem()
+    LogDebug("Searching for next craftable item")
     local ItemSequence = 0
     local CraftableItemsRemaining = false
     while not CraftableItemsRemaining do
         yield(string.format(Callback.clickNextItemToCraft, ItemSequence))
         if tonumber(GetNodeText("WKSRecipeNotebook", 24)) > 0 then
+            LogDebug("Item " .. (ItemSequence + 1) .. " is craftable")
             CraftableItemsRemaining = true
             return (ItemSequence + 1)
         end
@@ -730,6 +735,7 @@ function GetNextCraftableItem()
 end
 
 function CraftNextItem()
+    LogDebug("Attempting to craft next item")
     if Artisan then
         if not ArtisanGetEnduranceStatus() then
             if not IsAddonVisible("WKSRecipeNotebook") then
@@ -862,11 +868,12 @@ while not StopScript do
             SubmitMission()
             -- Mission submitted, breaking out of loop
             if not DoingMission then
+                LogDebug("No longer doing mission.")
                 break
             end
             CraftNextItem()
         end
-        if Synthesizing then
+        if Synthesizing or ArtisanGetEnduranceStatus() then
             yield("/wait 3")
         end
     end

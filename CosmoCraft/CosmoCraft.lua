@@ -9,11 +9,12 @@
 **************************************************************************
 ]]
 RepairAmount = 99          -- the amount it needs to drop before Repairing (set it to 0 if you don't want it to repair)
-CriticalMissions = false    -- Change this manually to true during red alerts to do red alert missions
+CriticalMissions = true    -- Change this manually to true during red alerts to do red alert missions
 ProvisionalMissions = false -- Change this manually to true to attempt doing provisional missions when available
-Debug = false               -- Change this to true to print debug log to see what the script is doing
+Debug = true               -- Change this to true to print debug log to see what the script is doing
 CurrentClass = "ARM"       -- SND is broken and can't retrieve self job ID right now so have to manual input
 Artisan = true             -- Uses Artisan's endurance mode
+InteractKeybind = "NUMPAD0"
 --[[
 **************************************************************************
 *                           Internal Variables                           *
@@ -29,6 +30,7 @@ Callback = {
     extractMateriaDialog = "/callback MaterializeDialog true 0 <wait.3>",
     repair = "/callback Repair true 0 <wait.3>",
     selectYes = "/callback SelectYesno true 0 <wait.3>",
+    interactNpc = "/send %s <wait.1>",
     toggleRepairWindow = "/generalaction repair <wait.1>",
     toggleMateriaExtractionWindow = '/generalaction "Materia Extraction" <wait.1>',
     openMissionInformationWindow = "/callback WKSHud true 11 <wait.1>",
@@ -696,45 +698,66 @@ function SearchForMission(CurrentMissionList)
 end
 
 function SubmitMission()
-    if not IsAddonVisible("WKSMissionInfomation") then
-        yield(Callback.openMissionInformationWindow)
+    if CriticalMissions then
+        if GetNodeText("_ToDoList", 28, 3) == "Deliver to the collection point: 0/1" then
+            yield(string.format(Callback.interactNpc, InteractKeybind))
+            yield(string.format(Callback.interactNpc, InteractKeybind))
+        end
+    else
+        if not IsAddonVisible("WKSMissionInfomation") then
+            yield(Callback.openMissionInformationWindow)
+        end
+        yield(Callback.submitMission)
     end
-    yield(Callback.submitMission)
     if IsAddonVisible("WKSReward") then
         LogInfo("Mission submitted!")
-        -- Manually sets the endurance status to false in case Artisan doesn't do it or there are desyncs
-        ArtisanSetEnduranceStatus(false)
         DoingMission = false
     end
 end
 
-function CraftNextItem()
-    -- Since couldn't submit, means something is still craftable
-    -- !!!! POTENTIAL CRASH !!!!
-    if not IsAddonVisible("WKSRecipeNotebook") then
-        -- Opens Recipe Book. Mission information window should already be opened.
-        yield(Callback.openRecipeWindow)
-    end
-    yield("/wait 1")
-    Synthesizing = GetCharacterCondition(CharacterCondition.crafting) and not GetCharacterCondition(CharacterCondition.preparingToCraft)
-    -- Does a final waut and update on current character status to mitigate issues due to server desync/lag
+function GetNextCraftableItem()
     local ItemSequence = 0
-    while not Synthesizing do
+    local CraftableItemsRemaining = false
+    while not CraftableItemsRemaining do
         yield(string.format(Callback.clickNextItemToCraft, ItemSequence))
         if tonumber(GetNodeText("WKSRecipeNotebook", 24)) > 0 then
-            LogInfo("Starting synthesis on item number " .. (ItemSequence + 1))
-            if Artisan then
-                ArtisanSetEnduranceStatus(true)
-                yield("/wait 1")
-            else
-                yield(Callback.clickHQButton)
-                yield(Callback.startSynthesis)
-            end
-            Synthesizing = GetCharacterCondition(CharacterCondition.crafting) and not GetCharacterCondition(CharacterCondition.preparingToCraft)
-        else
-            LogDebug("Item " .. ((ItemSequence) + 1) .. " can no longer be crafted. Checking next item")
-            ItemSequence = ItemSequence + 1
+            CraftableItemsRemaining = true
+            return (ItemSequence + 1)
         end
+        LogDebug("Item " .. ((ItemSequence) + 1) .. " can no longer be crafted. Checking next item")
+        ItemSequence = ItemSequence + 1
+    end
+end
+
+function CraftNextItem()
+    if Artisan then
+        if not ArtisanGetEnduranceStatus() then
+            if not IsAddonVisible("WKSRecipeNotebook") then
+                if not IsAddonVisible("WKSMission") then
+                    yield(Callback.openMissionInformationWindow)
+                end
+                yield(Callback.openRecipeWindow)
+            end        
+            local RecipeItem = GetNextCraftableItem()
+            LogInfo("Starting artisan endurance on item number " .. RecipeItem)
+            ArtisanSetEnduranceStatus(true)
+            yield("/wait 1")
+        else
+            -- Artisan still in endurance mode. Synthesizing status should still be true
+            LogDebug("Artisan still in endurance mode but synthesizing status has become " .. tostring(Synthesizing) .. ". Re-checking and re-setting the status")
+            Synthesizing = GetCharacterCondition(CharacterCondition.crafting) and not GetCharacterCondition(CharacterCondition.preparingToCraft)
+        end
+    else
+        if not IsAddonVisible("WKSRecipeNotebook") then
+            if not IsAddonVisible("WKSMission") then
+                yield(Callback.openMissionInformationWindow)
+            end
+            yield(Callback.openRecipeWindow)
+        end    
+        local RecipeItem = GetNextCraftableItem()
+        LogInfo("Starting synthesis on item number " .. RecipeItem)
+        yield(Callback.clickHQButton)
+        yield(Callback.startSynthesis)
     end
 end
 
@@ -831,6 +854,9 @@ while not StopScript do
     while DoingMission do
         Synthesizing = GetCharacterCondition(CharacterCondition.crafting) and not GetCharacterCondition(CharacterCondition.preparingToCraft)
         LogDebug("Synthesizing : " .. tostring(Synthesizing))
+        if Artisan then
+            LogDebug("Endurance : " .. tostring(ArtisanGetEnduranceStatus()))
+        end
         -- If not mid synthesizing, tries to submit
         if not Synthesizing then
             SubmitMission()

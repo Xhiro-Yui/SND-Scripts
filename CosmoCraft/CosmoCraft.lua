@@ -9,9 +9,10 @@
 **************************************************************************
 ]]
 RepairAmount = 99          -- the amount it needs to drop before Repairing (set it to 0 if you don't want it to repair)
-CriticalMissions = true    -- Change this manually to true during red alerts to do red alert missions -- WILL CRASH IF TRUE! Will be fixed in v1.3 or later
+CriticalMissions = false    -- Change this manually to true during red alerts to do red alert missions -- WILL CRASH IF TRUE! Will be fixed in v1.3 or later
 ProvisionalMissions = true -- Change this manually to true to attempt doing provisional missions when available
-Debug = true               -- Change this to true to print debug log to see what the script is doing
+Debug = false               -- Change this to true to print debug log to see what the script is doing
+Statistics = true           -- Records and prints some statistics throughout the duration of the script
 CurrentClass = "ARM"       -- SND is broken and can't retrieve self job ID right now so have to manual input
 Artisan = true             -- Uses Artisan's endurance mode
 InteractKeybind = "NUMPAD0"
@@ -50,6 +51,7 @@ StopScript = false
 DoingMission = false
 CurrentMission = {}
 Synthesizing = false
+Metatable =  { __lt = function (p1, p2) return (p1.priority or 10) < (p2.priority or 10) end }
 MissionList = {
     ARM = {
         Critical = {
@@ -57,7 +59,8 @@ MissionList = {
             [519] = { type = "Critical", name = " Vehicular Plating", valid = true }
         },
         Provisional = {
-            [126] = { type = "Sequential", name = "A-2: Specialized Materials II", valid = true },
+            [124] = { type = "Sequential", name = "A-2: Hub Furnishings and Fixtures II", valid = true },
+            [126] = { type = "Sequential", name = "A-2: Specialized Materials II", valid = false },
             [130] = { type = "Time", name = "A-1: High-performance Drone Materials I", valid = true },
             [121] = { type = "Weather", name = "A-3: High-durability Material Processing", valid = true},
             [122] = { type = "Weather", name = "A-3: Impact-resistant Material Processing", valid = true},
@@ -65,15 +68,15 @@ MissionList = {
         },
         A = {
             [112] = { name = "A-1: Key Facility Plating", valid = true },
-            [113] = { name = "A-1: Rare Material Processing", valid = true },
+            [113] = { name = "A-1: Rare Material Processing", valid = false },
             [114] = { name = "A-1: Construction Necessities", valid = true },
             [115] = { name = "A-1: High-conductivity Culinary Tools", valid = true },
-            [116] = { name = "A-1: Meteoric Material Test Processing", valid = true },
-            [123] = { name = "A-1: Hub Furnishings and Fixtures I", valid = true },
+            [116] = { name = "A-1: Meteoric Material Test Processing", valid = false },
+            [123] = { name = "A-1: Hub Furnishings and Fixtures I", valid = true, priority = 0 },
             [125] = { name = "A-1: Specialized Materials I", valid = true },
             [117] = { name = "A-2: Replica Incensories", valid = false },
-            [118] = { name = "A-2: Fine-grade Material Processing", valid = false },
-            [128] = { name = "A-2: Starship Building Materials", valid = false },
+            [118] = { name = "A-2: Fine-grade Material Processing", valid = true },
+            [128] = { name = "A-2: Starship Building Materials", valid = true },
             [497] = { name = "A-2: Impact-resistant Containers", valid = false }
         },
         B = {
@@ -456,6 +459,22 @@ function LogInfo(val)
     yield("/echo [Info] " .. val)
 end
 
+function SetMetaTableThenSort(InputTable)
+    if InputTable ~= nil then
+        for _, v in ipairs(InputTable) do
+            setmetatable (v, Metatable)
+        end
+        table.sort(InputTable)
+    end
+end
+
+function GetTimeTaken(Time)
+    local Minutes = math.floor(math.fmod(Time,3600)/60)
+    local Seconds = math.floor(math.fmod(Time,60))
+    return string.format("%02d:%02d", Minutes, Seconds)
+end
+
+
 function CheckRequiredDependencies()
     LogInfo("Checking required dependencies for the script to run")
     if Artisan then
@@ -478,7 +497,7 @@ function PrintCurrentMissions(CurrentMissions)
     for MissionType, MissionList in pairs(CurrentMissions) do
         LogDebug("[CurrentMissions] Mission Type : " .. MissionType)
         for _, MissionData in pairs(MissionList) do
-            LogDebug("[CurrentMissions] -> " .. (MissionData.type or "Basic") .. " |  " .. MissionData.name)
+            LogDebug("[CurrentMissions] -> " .. (MissionData.type or "Basic") .. " |  " .. MissionData.name .. " |  " .. (MissionData.priority or 10))
         end
         LogDebug("[CurrentMissions] ------")
     end
@@ -522,10 +541,6 @@ function GetCurrentMissions()
             ParseMission("Critical", Critical, GetNodeText("WKSMission", 89, 7, 8))
         end
         CurrentMissions.Critical = Critical
-        if (next(Critical) ~= nil) then
-            if Debug then PrintCurrentMissions(CurrentMissions) end
-            return CurrentMissions -- Return early because if any is available, should be doing it anyway
-        end
     end
     if ProvisionalMissions then
         LogDebug("Provisional Missions enabled. Parsing Provisional missions tab")
@@ -541,10 +556,6 @@ function GetCurrentMissions()
         ParseMission("Provisional", Provisional, GetNodeText("WKSMission", 89, 7, 8))
         ParseMission("Provisional", Provisional, GetNodeText("WKSMission", 89, 8, 8))
         CurrentMissions.Provisional = Provisional
-        if (next(Provisional) ~= nil) then
-            if Debug then PrintCurrentMissions(CurrentMissions) end
-            return CurrentMissions -- Return early because if any is available, should be doing it anyway
-        end
     end
     LogDebug("Parsing Basic missions tab")
     yield(Callback.navigateToBasicMissionsTab)
@@ -607,14 +618,15 @@ function StartMission()
     MissionObject, MissionCode = SearchForMission(GetCurrentMissions())
     if MissionObject ~= nil and MissionCode ~= nil then
         if Debug then
-            LogDebug("Running mission [" .. MissionObject.name .. "] with Mission ID [" .. MissionCode.. "]")
+            LogDebug("Running mission [" .. (MissionObject.type or "Basic") .. "] " .. MissionObject.name .. " with Mission ID [" .. MissionCode.. "]")
         else
-            LogInfo("Running mission " .. MissionObject)
+            LogInfo("Running mission [" .. (MissionObject.type or "Basic") .. "] " .. MissionObject.name )
         end
 
         yield(string.format(Callback.clickMission, MissionCode))
         yield(string.format(Callback.startMission, MissionCode))
         CurrentMission = MissionObject
+        if Statistics then CurrentMissionStartTime = os.time() end
         DoingMission = true
     end
 end
@@ -667,6 +679,7 @@ function SearchForMission(CurrentMissionList)
         end
     end
     if ProvisionalMissions then
+        SetMetaTableThenSort(CurrentMissionList.Provisional)
         for _, CurrentMissionObject in pairs(CurrentMissionList.Provisional) do
             MissionCode = CheckMissionValidity(CurrentMissionObject)
             if MissionCode ~= nil then
@@ -674,6 +687,7 @@ function SearchForMission(CurrentMissionList)
             end
         end
     end
+    SetMetaTableThenSort(CurrentMissionList.ClassA)
     for _, CurrentMissionObject in pairs(CurrentMissionList.ClassA) do
         MissionCode = CheckMissionValidity(CurrentMissionObject)
         if MissionCode ~= nil then
@@ -725,6 +739,11 @@ function SubmitMission()
     end
     if IsAddonVisible("WKSReward") then
         LogInfo("Mission submitted!")
+        if Statistics then
+            LogInfo(string.format("Mission duration : %s | Script running duration : %s", GetTimeTaken(os.time() - CurrentMissionStartTime), GetTimeTaken(os.time() - ScriptStartTime)))
+            LogInfo(string.format("(Cumulative) | Lunar Credits earned : %s  | CosmoCredits earned : %s",
+            (string.gsub(GetNodeText("WKSHud", 4, 3), ",", "") - StartingLunarCredits), (string.gsub(GetNodeText("WKSHud", 5, 3), ",", "")) - StartingCosmoCredits))
+        end
         DoingMission = false
         if Artisan then
             ArtisanSetEnduranceStatus(false)
@@ -773,7 +792,7 @@ function CraftNextItem()
                 yield(Callback.openMissionInformationWindow)
             end
             yield(Callback.openRecipeWindow)
-        end    
+        end
         local RecipeItem = GetNextCraftableItem()
         LogInfo("Starting synthesis on item number " .. RecipeItem)
         yield(Callback.clickHQButton)
@@ -852,6 +871,11 @@ LogInfo("Starting CosmoCraft")
 if not CheckRequiredDependencies() then
     LogInfo("Missing dependency required by the script. Aborting script")
     StopScript = true
+end
+if Statistics then
+    ScriptStartTime = os.time()
+    StartingCosmoCredits = string.gsub(GetNodeText("WKSHud", 5, 3), ",", "")
+    StartingLunarCredits = string.gsub(GetNodeText("WKSHud", 4, 3), ",", "")
 end
 while not StopScript do
     ExtractMateria()
